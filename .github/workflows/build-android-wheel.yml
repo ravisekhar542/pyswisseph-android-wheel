@@ -1,0 +1,48 @@
+name: Build pyswisseph Android wheel
+
+# Cross-compiles a pyswisseph Android wheel (arm64-v8a + x86_64) using
+# cibuildwheel on GitHub's Linux runner, then uploads the .whl files as a
+# downloadable artifact. Run it from the Actions tab (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pyswisseph_version:
+        description: "pyswisseph version to build"
+        default: "2.10.3.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Fetch and extract the pyswisseph source (sdist)
+        run: |
+          python -m pip install --upgrade pip
+          pip download "pyswisseph==${{ github.event.inputs.pyswisseph_version }}" \
+            --no-binary :all: --no-deps -d sdist
+          mkdir src
+          tar -xzf sdist/pyswisseph-*.tar.gz -C src --strip-components=1
+          ls -la src
+
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel
+
+      - name: Build Android wheels
+        run: python -m cibuildwheel --platform android --output-dir wheelhouse src
+        env:
+          # Only CPython 3.13 (first version with official Android support).
+          CIBW_BUILD: "cp313-*"
+          # Match the app's minSdk = 24.
+          ANDROID_API_LEVEL: "24"
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyswisseph-android-wheels
+          path: wheelhouse/*.whl
+          if-no-files-found: error
