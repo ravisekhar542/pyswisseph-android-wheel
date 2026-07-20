@@ -1,3 +1,6 @@
+Paste this over the whole file (pencil → select-all → paste → Commit), then Actions → Run workflow:
+
+
 name: Build pyswisseph Android wheel
 
 on:
@@ -15,6 +18,24 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - name: Install NDK r28 and point the build at it
+        run: |
+          echo "Runner's latest NDK: $ANDROID_NDK_LATEST_HOME"
+          cat "$ANDROID_NDK_LATEST_HOME/source.properties" 2>/dev/null || true
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          echo "Available r28/r29 NDKs:"
+          "$SDKMANAGER" --list 2>/dev/null | grep -oE 'ndk;2[89]\.[0-9.]+' | sort -u || true
+          NDK_PKG=$("$SDKMANAGER" --list 2>/dev/null | grep -oE 'ndk;2[89]\.[0-9.]+' | sort -V | tail -1)
+          echo "Chosen NDK package: $NDK_PKG"
+          yes | "$SDKMANAGER" --install "$NDK_PKG" >/dev/null
+          NDK_VER="${NDK_PKG#ndk;}"
+          NDK_PATH="$ANDROID_HOME/ndk/$NDK_VER"
+          echo "Installed NDK at: $NDK_PATH"
+          cat "$NDK_PATH/source.properties" 2>/dev/null || true
+          echo "ANDROID_NDK_ROOT=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_LATEST_HOME=$NDK_PATH" >> "$GITHUB_ENV"
 
       - name: Fetch and extract the pyswisseph source (sdist)
         run: |
