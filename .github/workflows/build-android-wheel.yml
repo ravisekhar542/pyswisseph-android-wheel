@@ -1,6 +1,3 @@
-Paste this over the whole file (pencil → select-all → paste → Commit), then Actions → Run workflow:
-
-
 name: Build pyswisseph Android wheel
 
 on:
