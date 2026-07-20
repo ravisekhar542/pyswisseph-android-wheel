@@ -1,9 +1,5 @@
 name: Build pyswisseph Android wheel
 
-# Cross-compiles a pyswisseph Android wheel (arm64-v8a + x86_64) using
-# cibuildwheel on GitHub's Linux runner, then uploads the .whl files as a
-# downloadable artifact. Run it from the Actions tab (workflow_dispatch).
-
 on:
   workflow_dispatch:
     inputs:
@@ -35,12 +31,39 @@ jobs:
       - name: Build Android wheels
         run: python -m cibuildwheel --platform android --output-dir wheelhouse src
         env:
-          # Only CPython 3.13 (first version with official Android support).
           CIBW_BUILD: "cp313-*"
-          # Match the app's minSdk = 24.
           ANDROID_API_LEVEL: "24"
-          # Android 15+ requires native libs aligned to 16 KB pages.
-          CIBW_ENVIRONMENT_ANDROID: "LDFLAGS='-Wl,-z,max-page-size=16384,-z,common-page-size=16384'"
+          CIBW_ENVIRONMENT: 'LDFLAGS="-Wl,-z,max-page-size=16384"'
+
+      - name: Verify 16 KB alignment of every .so
+        run: |
+          python -m pip install pyelftools
+          python - <<'PY'
+          import glob, sys, zipfile, tempfile, os
+          from elftools.elf.elffile import ELFFile
+
+          bad = False
+          for whl in glob.glob("wheelhouse/*.whl"):
+              print(f"\n=== {os.path.basename(whl)} ===")
+              with tempfile.TemporaryDirectory() as d:
+                  zipfile.ZipFile(whl).extractall(d)
+                  for root, _, files in os.walk(d):
+                      for fn in files:
+                          if fn.endswith(".so"):
+                              p = os.path.join(root, fn)
+                              with open(p, "rb") as f:
+                                  elf = ELFFile(f)
+                                  aligns = [seg["p_align"] for seg in elf.iter_segments()
+                                            if seg["p_type"] == "PT_LOAD"]
+                              ok = all(a >= 16384 for a in aligns)
+                              print(f"  {fn}: LOAD aligns={[hex(a) for a in aligns]}  16KB={'OK' if ok else 'NO'}")
+                              if not ok:
+                                  bad = True
+          if bad:
+              print("\nFAIL: at least one .so is not 16 KB aligned")
+              sys.exit(1)
+          print("\nAll .so files are 16 KB aligned")
+          PY
 
       - name: Upload wheels
         uses: actions/upload-artifact@v4
